@@ -10,6 +10,7 @@
  * http://www.opensource.org/licenses/gpl-license.html
  * http://www.gnu.org/copyleft/gpl.html
  */
+#ifdef RUNS_IN_SECURE_WORLD
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -290,3 +291,4 @@ module_exit(pm_cleanup);
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");
 MODULE_DESCRIPTION("PM driver");
 MODULE_LICENSE("GPL");
+#endif

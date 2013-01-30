@@ -909,8 +909,10 @@ static void __init fixup_mxc_board(struct machine_desc *desc, struct tag *tags,
 
 static void __init mx53_loco_io_init(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	mxc_iomux_v3_setup_multiple_pads(mx53_loco_pads,
 					ARRAY_SIZE(mx53_loco_pads));
+#endif
 
 	/* SD3 */
 	gpio_request(SD3_CD, "sd3-cd");
@@ -939,10 +941,11 @@ static void __init mx53_loco_io_init(void)
 	gpio_request(DISP0_DET_INT, "disp0-detect");
 	gpio_direction_input(DISP0_DET_INT);
 
+#ifdef RUNS_IN_SECURE_WORLD
 	/* LCD panel power enable */
 	gpio_request(DISP0_POWER_EN, "disp0-power-en");
 	gpio_direction_output(DISP0_POWER_EN, 1);
-
+#endif
 }
 
 /*!

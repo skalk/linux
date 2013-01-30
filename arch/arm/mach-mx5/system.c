@@ -180,6 +180,7 @@ static int arch_idle_mode = WAIT_UNCLOCKED_POWER_OFF;
  */
 void arch_idle(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	if (likely(!mxc_jtag_enabled)) {
 		if (ddr_clk == NULL)
 			ddr_clk = clk_get(NULL, "ddr_clk");
@@ -241,6 +242,7 @@ void arch_idle(void)
 		clk_disable(gpc_dvfs_clk);
 		clk_put(ddr_clk);
 	}
+#endif
 }
 
 static int __mxs_reset_block(void __iomem *hwreg, int just_enable)

@@ -368,6 +368,7 @@ static int ehci_fsl_reinit(struct ehci_hcd *ehci)
 static int ehci_fsl_bus_suspend(struct usb_hcd *hcd)
 {
 	int ret = 0;
+#ifdef RUNS_IN_SECURE_WORLD
 	struct fsl_usb2_platform_data *pdata;
 	u32 tmp, portsc;
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
@@ -399,6 +400,7 @@ static int ehci_fsl_bus_suspend(struct usb_hcd *hcd)
 	fsl_usb_lowpower_mode(pdata, true);
 	fsl_usb_clk_gate(hcd->self.controller->platform_data, false);
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
+#endif
 
 	return ret;
 }
@@ -406,6 +408,7 @@ static int ehci_fsl_bus_suspend(struct usb_hcd *hcd)
 static int ehci_fsl_bus_resume(struct usb_hcd *hcd)
 {
 	int ret = 0;
+#ifdef RUNS_IN_SECURE_WORLD
 	struct fsl_usb2_platform_data *pdata;
 
 	pdata = hcd->self.controller->platform_data;
@@ -432,6 +435,7 @@ static int ehci_fsl_bus_resume(struct usb_hcd *hcd)
 	ret = ehci_bus_resume(hcd);
 	if (ret)
 		return ret;
+#endif
 
 	return ret;
 }

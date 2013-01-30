@@ -980,8 +980,9 @@ static int __devinit mxc_dvfs_core_probe(struct platform_device *pdev)
 	old_wp = 0;
 	curr_wp = 0;
 	dvfs_core_resume = 0;
+#if defined(CONFIG_CPU_FREQ)
 	cpufreq_trig_needed = 0;
-
+#endif
 	register_pm_notifier(&dvfs_notifier_block);
 
 	return err;
