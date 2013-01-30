@@ -1603,6 +1603,7 @@ void __init mx5_init_irq(void)
 #define SEC_TO_NANOSEC  1000000000 /*Second to nanoseconds */
 static __init void mxc_init_scc_iram(void)
 {
+#ifndef RUNS_IN_SECURE_WORLD
 	uint32_t reg_value;
 	uint32_t reg_mask = 0;
 	uint8_t *UMID_base;
@@ -1802,6 +1803,7 @@ static __init void mxc_init_scc_iram(void)
 exit:
 	iounmap(scm_ram_base);
 	iounmap(scc_base);
+#endif
 	printk(KERN_INFO "IRAM READY\n");
 	iram_ready = 1;
 }
@@ -1931,7 +1933,6 @@ int __init mxc_init_devices(void)
 		ldb_resources[0].start -=  MX53_OFFSET;
 		ldb_resources[0].end -=  MX53_OFFSET;
 	}
-
 
 	if (cpu_is_mx51() || cpu_is_mx53())
 		mxc_init_scc_iram();

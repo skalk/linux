@@ -253,6 +253,7 @@ static int __init post_cpu_init(void)
 	clk_disable(gpcclk);
 	clk_put(gpcclk);
 
+#ifdef RUNS_IN_SECURE_WORLD
 	/* Set ALP bits to 000. Set ALP_EN bit in Arm Memory Controller reg. */
 	arm_plat_base = ioremap(MX53_BASE_ADDR(ARM_BASE_ADDR), SZ_4K);
 	reg = 0x8;
@@ -286,6 +287,7 @@ static int __init post_cpu_init(void)
 		__raw_writel(reg, base + 0x8c);
 		iounmap(base);
 	}
+#endif
 
 	if (cpu_is_mx50())
 		init_ddr_settings();

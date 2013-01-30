@@ -62,6 +62,7 @@ static struct clk *sys_clk ;
 /* set cpu low power mode before WFI instruction */
 void mxc_cpu_lp_set(enum mxc_cpu_pwr_mode mode)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	u32 plat_lpc, arm_srpgcr, ccm_clpcr;
 	u32 empgc0 = 0;
 	u32 empgc1 = 0;
@@ -129,6 +130,7 @@ void mxc_cpu_lp_set(enum mxc_cpu_pwr_mode mode)
 		__raw_writel(empgc0, MXC_SRPG_EMPGC0_SRPGCR);
 		__raw_writel(empgc1, MXC_SRPG_EMPGC1_SRPGCR);
 	}
+#endif
 }
 
 void mxc_pg_enable(struct platform_device *pdev)

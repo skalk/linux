@@ -4783,6 +4783,7 @@ int __init mx53_clocks_init(unsigned long ckil, unsigned long osc, unsigned long
 	pll3_base = ioremap(MX53_BASE_ADDR(PLL3_BASE_ADDR), SZ_4K);
 	pll4_base = ioremap(MX53_BASE_ADDR(PLL4_BASE_ADDR), SZ_4K);
 
+#ifdef RUNS_IN_SECURE_WORLD
 	/* Turn off all possible clocks */
 	if (mxc_jtag_enabled) {
 		__raw_writel(1 << MXC_CCM_CCGRx_CG0_OFFSET |
@@ -4825,6 +4826,7 @@ int __init mx53_clocks_init(unsigned long ckil, unsigned long osc, unsigned long
 				3 << MXC_CCM_CCGRx_CG13_OFFSET , MXC_CCM_CCGR6);
 
 	__raw_writel(0, MXC_CCM_CCGR7);
+#endif
 
 	external_low_reference = ckil;
 	external_high_reference = ckih1;

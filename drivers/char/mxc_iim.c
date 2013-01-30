@@ -474,7 +474,11 @@ static int mxc_iim_mmap(struct file *file, struct vm_area_struct *vma)
 	/* Remap-pfn-range will mark the range VM_IO and VM_RESERVED */
 	if (remap_pfn_range(vma,
 			    vma->vm_start,
+#ifdef RUNS_IN_SECURE_WORLD
 			    iim_data->reg_base >> PAGE_SHIFT,
+#else
+			    0xe0000000 >> PAGE_SHIFT,
+#endif
 			    vma->vm_end - vma->vm_start,
 			    vma->vm_page_prot))
 		return -EAGAIN;
