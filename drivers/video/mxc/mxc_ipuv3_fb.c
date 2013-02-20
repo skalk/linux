@@ -116,6 +116,19 @@ static struct fb_info *mxcfb_info[3];
 static struct mxcfb_mode mxc_disp_mode[MXCFB_PORT_NUM];
 static int (*mxcfb_pre_setup[MXCFB_PORT_NUM])(struct fb_info *info);
 
+#ifndef RUNS_IN_SECURE_WORLD
+static void genodefb_base(unsigned long base)
+{
+	asm volatile ("mov  r0, #0     \n"
+				  "mov  r1, #0     \n"
+				  "mov  r2, %[b]   \n"
+				  "isb             \n"
+				  "dsb             \n"
+				  "smc  #0         \n"
+				  :: [b] "r" (base) : "memory", "r0", "r1", "r2");
+}
+#endif
+
 /*
  * register pre-setup callback for some display
  * driver which need prepare clk etc.
@@ -198,7 +211,9 @@ static uint32_t bpp_to_pixfmt(struct fb_info *fbi)
 	return pixfmt;
 }
 
+#ifdef RUNS_IN_SECURE_WORLD
 static irqreturn_t mxcfb_irq_handler(int irq, void *dev_id);
+#endif
 static int mxcfb_blank(int blank, struct fb_info *info);
 static int mxcfb_map_video_memory(struct fb_info *fbi);
 static int mxcfb_unmap_video_memory(struct fb_info *fbi);
@@ -281,7 +296,9 @@ static int _setup_disp_channel1(struct fb_info *fbi)
 		if (mxc_fbi->alpha_chan_en)
 			params.mem_dp_bg_sync.alpha_chan_en = true;
 	}
+#ifdef RUNS_IN_SECURE_WORLD
 	ipu_init_channel(mxc_fbi->ipu_ch, &params);
+#endif
 
 	return 0;
 }
@@ -317,7 +334,12 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 	base = (fbi->var.yoffset * fbi->var.xres_virtual + fbi->var.xoffset);
 	base = (fbi->var.bits_per_pixel) * base / 8;
 	base += fbi->fix.smem_start;
+#ifndef RUNS_IN_SECURE_WORLD
+	if (mxc_fbi->ipu_ch == MEM_BG_SYNC)
+		genodefb_base(base);
+#endif
 
+#ifdef RUNS_IN_SECURE_WORLD
 	retval = ipu_init_channel_buffer(mxc_fbi->ipu_ch, IPU_INPUT_BUFFER,
 					 bpp_to_pixfmt(fbi),
 					 fbi->var.xres, fbi->var.yres,
@@ -350,6 +372,7 @@ static int _setup_disp_channel2(struct fb_info *fbi)
 			return retval;
 		}
 	}
+#endif
 
 	return retval;
 }
@@ -368,10 +391,12 @@ static int mxcfb_set_par(struct fb_info *fbi)
 
 	dev_dbg(fbi->device, "Reconfiguring framebuffer\n");
 
+#ifdef RUNS_IN_SECURE_WORLD
 	ipu_disable_irq(mxc_fbi->ipu_ch_irq);
 	ipu_disable_channel(mxc_fbi->ipu_ch, true);
 	ipu_uninit_channel(mxc_fbi->ipu_ch);
 	ipu_clear_irq(mxc_fbi->ipu_ch_irq);
+#endif
 	mxcfb_set_fix(fbi);
 
 	mem_len = fbi->var.yres_virtual * fbi->fix.line_length;
@@ -467,6 +492,7 @@ static int mxcfb_set_par(struct fb_info *fbi)
 		dev_dbg(fbi->device, "pixclock = %ul Hz\n",
 			(u32) (PICOS2KHZ(fbi->var.pixclock) * 1000UL));
 
+#ifdef RUNS_IN_SECURE_WORLD
 		if (ipu_init_sync_panel(mxc_fbi->ipu_di,
 					(PICOS2KHZ(fbi->var.pixclock)) * 1000UL,
 					fbi->var.xres, fbi->var.yres,
@@ -482,19 +508,23 @@ static int mxcfb_set_par(struct fb_info *fbi)
 				"mxcfb: Error initializing panel.\n");
 			return -EINVAL;
 		}
-
+#endif
 		fbi->mode =
 		    (struct fb_videomode *)fb_match_mode(&fbi->var,
 							 &fbi->modelist);
 
+#ifdef RUNS_IN_SECURE_WORLD
 		ipu_disp_set_window_pos(mxc_fbi->ipu_ch, 0, 0);
+#endif
 	}
 
 	retval = _setup_disp_channel2(fbi);
 	if (retval)
 		return retval;
 
+#ifdef RUNS_IN_SECURE_WORLD
 	ipu_enable_channel(mxc_fbi->ipu_ch);
+#endif
 
 	mxc_fbi->cur_blank = FB_BLANK_UNBLANK;
 
@@ -509,10 +539,12 @@ static int _swap_channels(struct fb_info *fbi,
 	struct mxcfb_info *mxc_fbi_from = (struct mxcfb_info *)fbi->par;
 	struct mxcfb_info *mxc_fbi_to = (struct mxcfb_info *)fbi_to->par;
 
+#ifdef RUNS_IN_SECURE_WORLD
 	if (both_on) {
 		ipu_disable_channel(mxc_fbi_to->ipu_ch, true);
 		ipu_uninit_channel(mxc_fbi_to->ipu_ch);
 	}
+#endif
 
 	/* switch the mxc fbi parameters */
 	old_ch = mxc_fbi_from->ipu_ch;
@@ -527,16 +559,20 @@ static int _swap_channels(struct fb_info *fbi,
 	if (retval)
 		return retval;
 
+#ifdef RUNS_IN_SECURE_WORLD
 	/* switch between dp and dc, disable old idmac, enable new idmac */
 	retval = ipu_swap_channel(old_ch, mxc_fbi_from->ipu_ch);
 	ipu_uninit_channel(old_ch);
+#endif
 
 	if (both_on) {
 		_setup_disp_channel1(fbi_to);
 		retval = _setup_disp_channel2(fbi_to);
 		if (retval)
 			return retval;
+#ifdef RUNS_IN_SECURE_WORLD
 		ipu_enable_channel(mxc_fbi_to->ipu_ch);
+#endif
 	}
 
 	return retval;
@@ -568,10 +604,12 @@ static int swap_channels(struct fb_info *fbi)
 	if (fbi_to == NULL)
 		return -1;
 
+#ifdef RUNS_IN_SECURE_WORLD
 	ipu_clear_irq(mxc_fbi_from->ipu_ch_irq);
 	ipu_clear_irq(mxc_fbi_to->ipu_ch_irq);
 	ipu_free_irq(mxc_fbi_from->ipu_ch_irq, fbi);
 	ipu_free_irq(mxc_fbi_to->ipu_ch_irq, fbi_to);
+#endif
 
 	if (mxc_fbi_from->cur_blank == FB_BLANK_UNBLANK) {
 		if (mxc_fbi_to->cur_blank == FB_BLANK_UNBLANK)
@@ -623,6 +661,7 @@ static int swap_channels(struct fb_info *fbi)
 		break;
 	}
 
+#ifdef RUNS_IN_SECURE_WORLD
 	if (ipu_request_irq(mxc_fbi_from->ipu_ch_irq, mxcfb_irq_handler, 0,
 		MXCFB_NAME, fbi) != 0) {
 		dev_err(fbi->device, "Error registering irq %d\n",
@@ -637,6 +676,7 @@ static int swap_channels(struct fb_info *fbi)
 		return -EBUSY;
 	}
 	ipu_disable_irq(mxc_fbi_to->ipu_ch_irq);
+#endif
 
 	return 0;
 }
@@ -659,8 +699,11 @@ static int mxcfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 		struct fb_info *fbi_tmp;
 		struct mxcfb_info *mxc_fbi_tmp;
 		int i, bg_xres, bg_yres;
+#ifdef RUNS_IN_SECURE_WORLD
 		int16_t pos_x, pos_y;
-
+#else
+		int16_t pos_x = 0, pos_y = 0;
+#endif
 		bg_xres = var->xres;
 		bg_yres = var->yres;
 
@@ -675,7 +718,9 @@ static int mxcfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 			}
 		}
 
+#ifdef RUNS_IN_SECURE_WORLD
 		ipu_disp_get_window_pos(mxc_fbi->ipu_ch, &pos_x, &pos_y);
+#endif
 
 		if ((var->xres + pos_x) > bg_xres)
 			var->xres = bg_xres - pos_x;
@@ -860,12 +905,14 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 				break;
 			}
 
+#ifdef RUNS_IN_SECURE_WORLD
 			if (ipu_disp_set_global_alpha(mxc_fbi->ipu_ch,
 						      (bool)ga.enable,
 						      ga.alpha)) {
 				retval = -EINVAL;
 				break;
 			}
+#endif
 
 			if (ga.enable)
 				mxc_fbi->alpha_chan_en = false;
@@ -887,11 +934,13 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 				break;
 			}
 
+#ifdef RUNS_IN_SECURE_WORLD
 			if (ipu_disp_set_global_alpha(mxc_fbi->ipu_ch,
 						      !(bool)la.enable, 0)) {
 				retval = -EINVAL;
 				break;
 			}
+#endif
 
 			if (la.enable && !la.alpha_in_pixel) {
 				mxc_fbi->alpha_chan_en = true;
@@ -959,10 +1008,13 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 			else
 				ipu_alp_ch_irq = IPU_IRQ_BG_ALPHA_SYNC_EOF;
 
+#ifdef RUNS_IN_SECURE_WORLD
 			down(&mxc_fbi->alpha_flip_sem);
+#endif
 
 			mxc_fbi->cur_ipu_alpha_buf =
 						!mxc_fbi->cur_ipu_alpha_buf;
+#ifdef RUNS_IN_SECURE_WORLD
 			if (ipu_update_channel_buffer(mxc_fbi->ipu_ch,
 						      IPU_ALPHA_IN_BUFFER,
 						      mxc_fbi->
@@ -980,6 +1032,7 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 					fbi->fix.id,
 					mxc_fbi->cur_ipu_alpha_buf, base);
 			}
+#endif
 			break;
 		}
 	case MXCFB_SET_CLR_KEY:
@@ -989,11 +1042,13 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 				retval = -EFAULT;
 				break;
 			}
+#ifdef RUNS_IN_SECURE_WORLD
 			retval = ipu_disp_set_color_key(mxc_fbi->ipu_ch,
 							key.enable,
 							key.color_key);
 			dev_dbg(fbi->device, "Set color key to 0x%08X\n",
 				key.color_key);
+#endif
 			break;
 		}
 	case MXCFB_SET_GAMMA:
@@ -1003,10 +1058,12 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 				retval = -EFAULT;
 				break;
 			}
+#ifdef RUNS_IN_SECURE_WORLD
 			retval = ipu_disp_set_gamma_correction(mxc_fbi->ipu_ch,
 							gamma.enable,
 							gamma.constk,
 							gamma.slopek);
+#endif
 			break;
 		}
 	case MXCFB_WAIT_FOR_VSYNC:
@@ -1033,6 +1090,7 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 
 			init_completion(&mxc_fbi->vsync_complete);
 
+#ifdef RUNS_IN_SECURE_WORLD
 			ipu_clear_irq(mxc_fbi->ipu_ch_irq);
 			mxc_fbi->wait4vsync = 1;
 			ipu_enable_irq(mxc_fbi->ipu_ch_irq);
@@ -1047,6 +1105,7 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 			} else if (retval > 0) {
 				retval = 0;
 			}
+#endif
 			break;
 		}
 	case FBIO_ALLOC:
@@ -1155,8 +1214,10 @@ static int mxcfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 					pos.y = bg_fbi->var.yres - fbi->var.yres;
 			}
 
+#ifdef RUNS_IN_SECURE_WORLD
 			retval = ipu_disp_set_window_pos(mxc_fbi->ipu_ch,
 							 pos.x, pos.y);
+#endif
 
 			if (copy_to_user((void *)arg, &pos, sizeof(pos))) {
 				retval = -EFAULT;
@@ -1239,9 +1300,11 @@ static int mxcfb_blank(int blank, struct fb_info *info)
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
 	case FB_BLANK_NORMAL:
+#ifdef RUNS_IN_SECURE_WORLD
 		ipu_disable_channel(mxc_fbi->ipu_ch, true);
 		ipu_uninit_sync_panel(mxc_fbi->ipu_di);
 		ipu_uninit_channel(mxc_fbi->ipu_ch);
+#endif
 		break;
 	case FB_BLANK_UNBLANK:
 		mxcfb_set_par(info);
@@ -1325,7 +1388,9 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 		}
 	}
 
+#ifdef RUNS_IN_SECURE_WORLD
 	down(&mxc_fbi->flip_sem);
+#endif
 
 	mxc_fbi->cur_ipu_buf = (++mxc_fbi->cur_ipu_buf) % 3;
 	mxc_fbi->cur_ipu_alpha_buf = !mxc_fbi->cur_ipu_alpha_buf;
@@ -1333,6 +1398,7 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	dev_dbg(info->device, "Updating SDC %s buf %d address=0x%08lX\n",
 		info->fix.id, mxc_fbi->cur_ipu_buf, base);
 
+#ifdef RUNS_IN_SECURE_WORLD
 	if (ipu_update_channel_buffer(mxc_fbi->ipu_ch, IPU_INPUT_BUFFER,
 				      mxc_fbi->cur_ipu_buf, base) == 0) {
 		/* Update the DP local alpha buffer only for graphic plane */
@@ -1370,6 +1436,10 @@ mxcfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 		ipu_enable_irq(mxc_fbi->ipu_ch_irq);
 		return -EBUSY;
 	}
+#else
+	if (mxc_fbi->ipu_ch == MEM_BG_SYNC)
+		genodefb_base(base);
+#endif
 
 	dev_dbg(info->device, "Update complete\n");
 
@@ -1451,6 +1521,7 @@ static struct fb_ops mxcfb_ops = {
 	.fb_blank = mxcfb_blank,
 };
 
+#ifdef RUNS_IN_SECURE_WORLD
 static irqreturn_t mxcfb_irq_handler(int irq, void *dev_id)
 {
 	struct fb_info *fbi = dev_id;
@@ -1476,6 +1547,7 @@ static irqreturn_t mxcfb_alpha_irq_handler(int irq, void *dev_id)
 	ipu_disable_irq(irq);
 	return IRQ_HANDLED;
 }
+#endif
 
 /*
  * Suspends the framebuffer and blanks the screen. Power management support
@@ -1575,6 +1647,10 @@ struct early_suspend fbdrv_earlysuspend = {
  */
 static int mxcfb_map_video_memory(struct fb_info *fbi)
 {
+#ifndef RUNS_IN_SECURE_WORLD
+	struct mxcfb_info *mxc_fbi = (struct mxcfb_info *)fbi->par;
+#endif
+
 	if (fbi->fix.smem_len < fbi->var.yres_virtual * fbi->fix.line_length)
 		fbi->fix.smem_len = fbi->var.yres_virtual *
 				    fbi->fix.line_length;
@@ -1583,6 +1659,7 @@ static int mxcfb_map_video_memory(struct fb_info *fbi)
 				fbi->fix.smem_len,
 				(dma_addr_t *)&fbi->fix.smem_start,
 				GFP_DMA);
+
 	if (fbi->screen_base == 0) {
 		dev_err(fbi->device, "Unable to allocate framebuffer memory\n");
 		fbi->fix.smem_len = 0;
@@ -1597,6 +1674,11 @@ static int mxcfb_map_video_memory(struct fb_info *fbi)
 
 	/* Clear the screen */
 	memset((char *)fbi->screen_base, 0, fbi->fix.smem_len);
+
+#ifndef RUNS_IN_SECURE_WORLD
+	if (mxc_fbi->ipu_ch == MEM_BG_SYNC)
+		genodefb_base(fbi->fix.smem_start);
+#endif
 
 	return 0;
 }
@@ -1615,6 +1697,9 @@ static int mxcfb_unmap_video_memory(struct fb_info *fbi)
 	fbi->screen_base = 0;
 	fbi->fix.smem_start = 0;
 	fbi->fix.smem_len = 0;
+#ifndef RUNS_IN_SECURE_WORLD
+	//TODO
+#endif
 	return 0;
 }
 
@@ -1919,8 +2004,10 @@ static int mxcfb_probe(struct platform_device *pdev)
 	mxcfbi->fb_suspended = false;
 
 	if (pdev->id == 0) {
+#ifdef RUNS_IN_SECURE_WORLD
 		ipu_disp_set_global_alpha(mxcfbi->ipu_ch, true, 0x80);
 		ipu_disp_set_color_key(mxcfbi->ipu_ch, false, 0);
+#endif
 		strcpy(fbi->fix.id, "DISP3 BG");
 
 		if (!g_dp_in_use)
@@ -1945,6 +2032,7 @@ static int mxcfb_probe(struct platform_device *pdev)
 
 	mxcfb_info[pdev->id] = fbi;
 
+#ifdef RUNS_IN_SECURE_WORLD
 	if (ipu_request_irq(mxcfbi->ipu_ch_irq, mxcfb_irq_handler, 0,
 			    MXCFB_NAME, fbi) != 0) {
 		dev_err(&pdev->dev, "Error registering BG irq handler.\n");
@@ -1962,11 +2050,19 @@ static int mxcfb_probe(struct platform_device *pdev)
 			ret = -EBUSY;
 			goto err2;
 		}
-
+#endif
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res && res->end) {
 		fbi->fix.smem_len = res->end - res->start + 1;
 		fbi->fix.smem_start = res->start;
+#ifndef RUNS_IN_SECURE_WORLD
+		if (mxcfbi->ipu_ch == MEM_BG_SYNC)
+			genodefb_base(fbi->fix.smem_start);
+#endif
+
+		printk("%s: start=%lx len=%xz\n", __func__,
+			   fbi->fix.smem_start, fbi->fix.smem_len);
+
 		fbi->screen_base = ioremap(fbi->fix.smem_start, fbi->fix.smem_len);
 		if (!fbi->screen_base) {
 			dev_err(&pdev->dev,
@@ -1975,7 +2071,9 @@ static int mxcfb_probe(struct platform_device *pdev)
 			goto err3;
 		}
 		memset((char *)fbi->screen_base, 0, fbi->fix.smem_len);
-	}
+	} else
+		printk("%s: no remap\n", __func__);
+
 
 	ret =  mxcfb_setup(fbi, pdev);
 	if (ret < 0)
@@ -1998,10 +2096,12 @@ static int mxcfb_probe(struct platform_device *pdev)
 
 	return 0;
 err3:
+#ifdef RUNS_IN_SECURE_WORLD
 	if (mxcfbi->ipu_alp_ch_irq != -1)
 		ipu_free_irq(mxcfbi->ipu_alp_ch_irq, fbi);
 err2:
 	ipu_free_irq(mxcfbi->ipu_ch_irq, fbi);
+#endif
 err1:
 	fb_dealloc_cmap(&fbi->cmap);
 	framebuffer_release(fbi);
@@ -2012,13 +2112,17 @@ err0:
 static int mxcfb_remove(struct platform_device *pdev)
 {
 	struct fb_info *fbi = platform_get_drvdata(pdev);
+#ifdef RUNS_IN_SECURE_WORLD
 	struct mxcfb_info *mxc_fbi = fbi->par;
+#endif
 
 	if (!fbi)
 		return 0;
 
 	mxcfb_blank(FB_BLANK_POWERDOWN, fbi);
+#ifdef RUNS_IN_SECURE_WORLD
 	ipu_free_irq(mxc_fbi->ipu_ch_irq, fbi);
+#endif
 	mxcfb_unmap_video_memory(fbi);
 
 	if (&fbi->cmap)

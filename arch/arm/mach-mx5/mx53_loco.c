@@ -315,6 +315,50 @@ static struct fb_videomode video_modes[] = {
 	 FB_SYNC_CLK_LAT_FALL,
 	 FB_VMODE_NONINTERLACED,
 	 0,},
+#ifndef RUNS_IN_SECURE_WORLD
+    {
+	 "VGA", 60, 640, 480, 15385,
+	 220, 40,
+	 21, 7,
+	 60, 10,
+	 0,
+	 FB_VMODE_NONINTERLACED,
+	 0,},
+#endif
+	{
+	 "XGA", 60, 1024, 768, 15385,
+	 220, 40,
+	 21, 7,
+	 60, 10,
+	 0,
+	 FB_VMODE_NONINTERLACED,
+	 0,},
+	{
+	 /* 720p30 TV output */
+	 "720P30", 30, 1280, 720, 13468,
+	 260, 1759,
+	 25, 4,
+	 1, 1,
+	 FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
+	 FB_VMODE_NONINTERLACED,
+	 0,},
+	{
+	 "720P60", 60, 1280, 720, 13468,
+	 260, 109,
+	 25, 4,
+	 1, 1,
+	 FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
+	 FB_VMODE_NONINTERLACED,
+	 0,},
+	{
+	/* VGA 1280x1024 108M pixel clk output */
+	"SXGA", 60, 1280, 1024, 9259,
+	48, 248,
+	1, 38,
+	112, 3,
+	0,
+	FB_VMODE_NONINTERLACED,
+	0,},
 	{
 	/* 1600x1200 @ 60 Hz 162M pixel clk*/
 	"UXGA", 60, 1600, 1200, 6172,
