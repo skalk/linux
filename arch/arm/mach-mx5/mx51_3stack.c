@@ -433,9 +433,10 @@ static struct mxc_fb_platform_data fb_data[] = {
 
 static void lcd_reset_to2(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	gpio_set_value(IOMUX_TO_GPIO(MX51_PIN_DI1_D1_CS), 0);
 	ipu_reset_disp_panel();
-
+#endif
 	return;
 }
 

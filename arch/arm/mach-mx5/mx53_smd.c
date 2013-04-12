@@ -449,6 +449,7 @@ static void smd_da9053_irq_wakeup_only_fixup(void)
 
 static void smd_suspend_enter(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	if (board_is_rev(BOARD_REV_4)) {
 		smd_da9053_irq_wakeup_only_fixup();
 		da9053_suspend_cmd_sw();
@@ -459,12 +460,15 @@ static void smd_suspend_enter(void)
 
 		da9053_suspend_cmd_hw();
 	}
+#endif
 }
 
 static void smd_suspend_exit(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	if (da9053_get_chip_version())
 		da9053_restore_volt_settings();
+#endif
 }
 
 static struct mxc_pm_platform_data smd_pm_data = {
@@ -485,6 +489,14 @@ static struct fb_videomode video_modes[] = {
 	FB_SYNC_CLK_LAT_FALL,
 	FB_VMODE_NONINTERLACED,
 	0,},
+	{
+	 "XGA", 60, 1024, 752, 15385,
+	 220, 40,
+	 21, 7,
+	 60, 10,
+	 0,
+	 FB_VMODE_NONINTERLACED,
+	 FB_MODE_IS_DETAILED,},
 	{
 	/* 1600x1200 @ 60 Hz 162M pixel clk*/
 	"UXGA", 60, 1600, 1200, 6172,
@@ -1364,7 +1376,9 @@ static void __init mxc_board_init(void)
 	mx53_smd_io_init();
 
 	/* power off by sending shutdown command to da9053*/
+#ifdef RUNS_IN_SECURE_WORLD
 	pm_power_off = da9053_power_off;
+#endif
 	mxc_register_device(&mxc_dma_device, NULL);
 	mxc_register_device(&mxc_wdt_device, NULL);
 	mxc_register_device(&mxcspi1_device, &mxcspi1_data);

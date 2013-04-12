@@ -165,6 +165,7 @@ static int __devinit lcd_probe(struct device *dev)
 
 static int __devinit lcd_plat_probe(struct platform_device *pdev)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	ipu_adc_sig_cfg_t sig;
 	ipu_channel_params_t param;
 
@@ -175,7 +176,7 @@ static int __devinit lcd_plat_probe(struct platform_device *pdev)
 
 	memset(&param, 0, sizeof(param));
 	ipu_init_channel(DIRECT_ASYNC1, &param);
-
+#endif
 	return lcd_probe(&pdev->dev);
 }
 
@@ -259,6 +260,7 @@ static struct platform_driver lcd_plat_driver = {
  */
 static void lcd_init(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	const u16 cmd[] = { 0x36, param(0), 0x3A, param(0x60) };
 
 	dev_dbg(lcd_dev, "initializing LCD\n");
@@ -272,6 +274,7 @@ static void lcd_init(void)
 		msleep(1);
 		ipu_uninit_channel(DIRECT_ASYNC1);
 	}
+#endif
 }
 
 static int lcd_on;
@@ -281,6 +284,7 @@ static int lcd_on;
  */
 static void lcd_poweron(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	const u16 slpout = 0x11;
 	const u16 dison = 0x29;
 	ipu_channel_params_t param;
@@ -303,6 +307,7 @@ static void lcd_poweron(void)
 		msleep(1);
 		ipu_uninit_channel(DIRECT_ASYNC1);
 	}
+#endif
 	lcd_on = 1;
 }
 
@@ -312,6 +317,7 @@ static void lcd_poweron(void)
  */
 static void lcd_poweroff(void)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	const u16 slpin = 0x10;
 	const u16 disoff = 0x28;
 	ipu_channel_params_t param;
@@ -334,6 +340,7 @@ static void lcd_poweroff(void)
 		msleep(1);
 		ipu_uninit_channel(DIRECT_ASYNC1);
 	}
+#endif
 	lcd_on = 0;
 }
 

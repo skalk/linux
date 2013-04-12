@@ -67,6 +67,7 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	if (pwm == NULL || period_ns == 0 || duty_ns > period_ns)
 		return -EINVAL;
 
+#ifdef RUNS_IN_SECURE_WORLD
 	if (!(cpu_is_mx1() || cpu_is_mx21())) {
 		unsigned long long c;
 		unsigned long period_cycles, duty_cycles, prescale;
@@ -126,7 +127,7 @@ int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
 	} else {
 		BUG();
 	}
-
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(pwm_config);
@@ -155,6 +156,7 @@ EXPORT_SYMBOL(pwm_enable);
 
 void pwm_disable(struct pwm_device *pwm)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	if (pwm->disable_pwm_pad)
 		pwm->disable_pwm_pad();
 
@@ -164,6 +166,7 @@ void pwm_disable(struct pwm_device *pwm)
 		clk_disable(pwm->clk);
 		pwm->clk_enabled = 0;
 	}
+#endif
 }
 EXPORT_SYMBOL(pwm_disable);
 

@@ -51,17 +51,21 @@ static int gpio_table_size;
 
 static void _clear_gpio_irqstatus(struct mxc_gpio_port *port, u32 index)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	__raw_writel(1 << index, port->base + GPIO_ISR);
+#endif
 }
 
 static void _set_gpio_irqenable(struct mxc_gpio_port *port, u32 index,
 				int enable)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	u32 l;
 
 	l = __raw_readl(port->base + GPIO_IMR);
 	l = (l & (~(1 << index))) | (!!enable << index);
 	__raw_writel(l, port->base + GPIO_IMR);
+#endif
 }
 
 static void gpio_ack_irq(u32 irq)
@@ -86,6 +90,7 @@ static int mxc_gpio_get(struct gpio_chip *chip, unsigned offset);
 
 static int gpio_set_irq_type(u32 irq, u32 type)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	u32 gpio = irq_to_gpio(irq);
 	struct mxc_gpio_port *port = &mxc_gpio_ports[gpio / 32];
 	u32 bit, val;
@@ -132,12 +137,13 @@ static int gpio_set_irq_type(u32 irq, u32 type)
 	val = __raw_readl(reg) & ~(0x3 << (bit << 1));
 	__raw_writel(val | (edge << (bit << 1)), reg);
 	_clear_gpio_irqstatus(port, gpio & 0x1f);
-
+#endif
 	return 0;
 }
 
 static void mxc_flip_edge(struct mxc_gpio_port *port, u32 gpio)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	void __iomem *reg = port->base;
 	u32 bit, val;
 	int edge;
@@ -159,11 +165,13 @@ static void mxc_flip_edge(struct mxc_gpio_port *port, u32 gpio)
 		return;
 	}
 	__raw_writel(val | (edge << (bit << 1)), reg);
+#endif
 }
 
 /* handle 32 interrupts in one status register */
 static void mxc_gpio_irq_handler(struct mxc_gpio_port *port, u32 irq_stat)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	u32 gpio_irq_no_base = port->virtual_irq_start;
 
 	while (irq_stat != 0) {
@@ -176,11 +184,13 @@ static void mxc_gpio_irq_handler(struct mxc_gpio_port *port, u32 irq_stat)
 
 		irq_stat &= ~(1 << irqoffset);
 	}
+#endif
 }
 
 /* MX1 and MX3 has one interrupt *per* gpio port */
 static void mx3_gpio_irq_handler(u32 irq, struct irq_desc *desc)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	u32 irq_stat;
 	u32 mask = 0xFFFFFFFF;
 	struct mxc_gpio_port *port = (struct mxc_gpio_port *)get_irq_data(irq);
@@ -195,11 +205,13 @@ static void mx3_gpio_irq_handler(u32 irq, struct irq_desc *desc)
 	irq_stat = __raw_readl(port->base + GPIO_ISR) &
 			(__raw_readl(port->base + GPIO_IMR) & mask);
 	mxc_gpio_irq_handler(port, irq_stat);
+#endif
 }
 
 /* MX2 has one interrupt *for all* gpio ports */
 static void mx2_gpio_irq_handler(u32 irq, struct irq_desc *desc)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	int i;
 	u32 irq_msk, irq_stat;
 	struct mxc_gpio_port *port = (struct mxc_gpio_port *)get_irq_data(irq);
@@ -214,6 +226,7 @@ static void mx2_gpio_irq_handler(u32 irq, struct irq_desc *desc)
 		if (irq_stat)
 			mxc_gpio_irq_handler(&port[i], irq_stat);
 	}
+#endif
 }
 
 /*
@@ -227,6 +240,7 @@ static void mx2_gpio_irq_handler(u32 irq, struct irq_desc *desc)
  */
 static int gpio_set_wake_irq(u32 irq, u32 enable)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	u32 gpio = irq_to_gpio(irq);
 	u32 gpio_idx = gpio & 0x1F;
 	struct mxc_gpio_port *port = &mxc_gpio_ports[gpio / 32];
@@ -244,6 +258,7 @@ static int gpio_set_wake_irq(u32 irq, u32 enable)
 		else
 			disable_irq_wake(port->irq);
 	}
+#endif
 
 	return 0;
 }
@@ -259,6 +274,7 @@ static struct irq_chip gpio_irq_chip = {
 static void _set_gpio_direction(struct gpio_chip *chip, unsigned offset,
 				int dir)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	struct mxc_gpio_port *port =
 		container_of(chip, struct mxc_gpio_port, chip);
 	u32 l;
@@ -272,10 +288,12 @@ static void _set_gpio_direction(struct gpio_chip *chip, unsigned offset,
 		l &= ~(1 << offset);
 	__raw_writel(l, port->base + GPIO_GDIR);
 	spin_unlock_irqrestore(&port->lock, flags);
+#endif
 }
 
 static void mxc_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	struct mxc_gpio_port *port =
 		container_of(chip, struct mxc_gpio_port, chip);
 	void __iomem *reg = port->base + GPIO_DR;
@@ -286,14 +304,19 @@ static void mxc_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 	l = (__raw_readl(reg) & (~(1 << offset))) | (value << offset);
 	__raw_writel(l, reg);
 	spin_unlock_irqrestore(&port->lock, flags);
+#endif
 }
 
 static int mxc_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	struct mxc_gpio_port *port =
 		container_of(chip, struct mxc_gpio_port, chip);
 
 	return (__raw_readl(port->base + GPIO_PSR) >> offset) & 1;
+#else
+	return 0;
+#endif
 }
 
 static int mxc_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
@@ -322,9 +345,11 @@ int __init mxc_gpio_init(struct mxc_gpio_port *port, int cnt)
 	printk(KERN_INFO "MXC GPIO hardware\n");
 
 	for (i = 0; i < cnt; i++) {
+#ifdef RUNS_IN_SECURE_WORLD
 		/* disable the interrupt and clear the status */
 		__raw_writel(0, port[i].base + GPIO_IMR);
 		__raw_writel(~0, port[i].base + GPIO_ISR);
+#endif
 		for (j = port[i].virtual_irq_start;
 			j < port[i].virtual_irq_start + 32; j++) {
 			set_irq_chip(j, &gpio_irq_chip);
@@ -390,11 +415,13 @@ static int mxc_gpio_suspend(struct sys_device *dev, pm_message_t mesg)
 		isr_reg = port[i].base + GPIO_ISR;
 		imr_reg = port[i].base + GPIO_IMR;
 
+#ifdef RUNS_IN_SECURE_WORLD
 		if (__raw_readl(isr_reg) & port[i].suspend_wakeup)
 			return -EPERM;
 
 		port[i].saved_wakeup = __raw_readl(imr_reg);
 		__raw_writel(port[i].suspend_wakeup, imr_reg);
+#endif
 	}
 
 	return 0;
@@ -422,7 +449,9 @@ static int mxc_gpio_resume(struct sys_device *dev)
 		isr_reg = port[i].base + GPIO_ISR;
 		imr_reg = port[i].base + GPIO_IMR;
 
+#ifdef RUNS_IN_SECURE_WORLD
 		__raw_writel(port[i].saved_wakeup, imr_reg);
+#endif
 	}
 
 	return 0;

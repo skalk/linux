@@ -150,6 +150,15 @@ config TOUCHSCREEN_EGALAX
 	  To compile this driver as a module, choose M here: the
 	  module will be called egalax_ts.
 
+config TOUCHSCREEN_GENODE
+	tristate "Genode TZ VMM touchscreen panel support"
+	help
+	  Say Y here to enable support for Genode's TrustZone VMM
+	  input driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called genode_ts.
+
 config TOUCHSCREEN_FUJITSU
 	tristate "Fujitsu serial touchscreen"
 	select SERIO

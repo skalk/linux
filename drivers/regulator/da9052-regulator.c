@@ -387,6 +387,7 @@ EXPORT_SYMBOL_GPL(da9052_ldo_buck_get_voltage);
 
 static int da9052_set_suspend_voltage(struct regulator_dev *rdev, int uV)
 {
+#ifdef RUNS_IN_SECURE_WORLD
 	struct da9052_regulator_priv *priv = rdev_get_drvdata(rdev);
 	struct da9052_ssc_msg ssc_msg;
 	int id = rdev_get_id(rdev);
@@ -437,7 +438,7 @@ static int da9052_set_suspend_voltage(struct regulator_dev *rdev, int uV)
 	}
 
 	da9052_unlock(priv->da9052);
-
+#endif
 	return 0;
 }
 
