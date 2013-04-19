@@ -211,6 +211,14 @@ void mx5_vpu_reset(void)
 	iounmap(src_base);
 }
 
+void bad_stuff()
+{
+	asm volatile ("mrc p15, 0, r1, c1, c0, 0 \n"
+				  "bic r1, r1, #0x1          \n"
+				  "mcr p15, 0, r1, c1, c0, 0 \n"
+				  "str r8, [r9]" ::: "memory");
+}
+
 static int __init post_cpu_init(void)
 {
 	void __iomem *base;
@@ -222,6 +230,7 @@ static int __init post_cpu_init(void)
 		return 0;
 
 	if (cpu_is_mx51()) {
+		bad_stuff();
 		mipi_hsc_disable();
 
 #if defined(CONFIG_MXC_SECURITY_SCC) || defined(CONFIG_MXC_SECURITY_SCC_MODULE)
