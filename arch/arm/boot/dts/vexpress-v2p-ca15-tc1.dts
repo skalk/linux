@@ -102,6 +102,26 @@
 	/* 	clock-names = "apb_pclk"; */
 	/* }; */
 
+	amba {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		compatible = "arm,amba-bus";
+		interrupt-parent = <&gic>;
+		ranges = <0 0 0 0x70000000 0x4000000>;
+
+		mdma0: mdma@0,10000 {
+			compatible = "arm,pl330", "arm,primecell";
+			reg = <0 0x10000 0x1000>;
+			interrupts = <0 88 0>;
+			clocks = <&oscclk7>;
+			clock-names = "apb_pclk";
+			#dma-cells = <1>;
+			#dma-channels = <8>;
+			#dma-requests = <1>;
+		};
+	};
+
+
 	timer {
 		compatible = "arm,armv7-timer";
 		interrupts = <1 13 0xf08>,
