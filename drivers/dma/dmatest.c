@@ -22,6 +22,7 @@
 #include <linux/slab.h>
 #include <linux/wait.h>
 
+#include <asm/mach/map.h>
 static unsigned int test_buf_size = 16384;
 module_param(test_buf_size, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
@@ -31,7 +32,7 @@ module_param_string(channel, test_channel, sizeof(test_channel),
 		S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(channel, "Bus ID of the channel to test (default: any)");
 
-static char test_device[32];
+static char test_device[32] = "70010000.mdma";
 module_param_string(device, test_device, sizeof(test_device),
 		S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(device, "Bus ID of the DMA Engine to test (default: any)");
@@ -41,12 +42,12 @@ module_param(threads_per_chan, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(threads_per_chan,
 		"Number of threads to start per channel (default: 1)");
 
-static unsigned int max_channels;
+static unsigned int max_channels = 1;
 module_param(max_channels, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(max_channels,
 		"Maximum number of channels to use (default: all)");
 
-static unsigned int iterations;
+static unsigned int iterations = 1;
 module_param(iterations, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(iterations,
 		"Iterations before stopping test (default: infinite)");
@@ -66,7 +67,7 @@ module_param(timeout, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(timeout, "Transfer Timeout in msec (default: 3000), "
 		 "Pass -1 for infinite timeout");
 
-static bool noverify;
+static bool noverify/* = true*/;
 module_param(noverify, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(noverify, "Disable random data setup and verification");
 
@@ -124,7 +125,7 @@ static struct kernel_param_ops run_ops = {
 	.set = dmatest_run_set,
 	.get = dmatest_run_get,
 };
-static bool dmatest_run;
+static bool dmatest_run = true;
 module_param_cb(run, &run_ops, &dmatest_run, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(run, "Run the test (default: false)");
 
@@ -420,6 +421,7 @@ static int dmatest_func(void *data)
 	ktime_t			ktime;
 	s64			runtime = 0;
 	unsigned long long	total_len = 0;
+	u8 * tbuf ;
 
 	set_freezable();
 
@@ -546,6 +548,7 @@ static int dmatest_func(void *data)
 			um->addr[i] = dma_map_page(dev->dev, pg, pg_off,
 						   um->len, DMA_TO_DEVICE);
 			srcs[i] = um->addr[i] + src_off;
+			//srcs[i] = 48008000;
 			ret = dma_mapping_error(dev->dev, um->addr[i]);
 			if (ret) {
 				dmaengine_unmap_put(um);
@@ -556,6 +559,7 @@ static int dmatest_func(void *data)
 			}
 			um->to_cnt++;
 		}
+
 		/* map with DMA_BIDIRECTIONAL to force writeback/invalidate */
 		dsts = &um->addr[src_cnt];
 		for (i = 0; i < dst_cnt; i++) {
@@ -578,8 +582,8 @@ static int dmatest_func(void *data)
 
 		if (thread->type == DMA_MEMCPY)
 			tx = dev->device_prep_dma_memcpy(chan,
-							 dsts[0] + dst_off,
-							 srcs[0], len, flags);
+											 dsts[0] + dst_off /*- 0x38000000*/,
+											 0x80008000/*srcs[0] /*- 0x38000000 0x80000000*/, len, flags);
 		else if (thread->type == DMA_XOR)
 			tx = dev->device_prep_dma_xor(chan,
 						      dsts[0] + dst_off,
@@ -625,6 +629,7 @@ static int dmatest_func(void *data)
 		status = dma_async_is_tx_complete(chan, cookie, NULL, NULL);
 
 		if (!done.done) {
+
 			/*
 			 * We're leaving the timed out dma operation with
 			 * dangling pointer to done_wait.  To make this
@@ -648,7 +653,14 @@ static int dmatest_func(void *data)
 			continue;
 		}
 
-		dmaengine_unmap_put(um);
+		tbuf = thread->dsts[0] + dst_off;
+		printk("DMA copied content:\n");
+		for (i = 0x0; i < 0x200; i+=0x10) {
+			printk("%08x  %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x\n",
+				   i, tbuf[i], tbuf[i+1], tbuf[i+2], tbuf[i+3], tbuf[i+4], tbuf[i+5], tbuf[i+6], tbuf[i+7], tbuf[i+8], tbuf[i+9], tbuf[i+10], tbuf[i+11], tbuf[i+12], tbuf[i+13], tbuf[i+14], tbuf[i+15]);
+		}
+
+		//dmaengine_unmap_put(um);
 
 		if (params->noverify) {
 			verbose_result("test passed", total_tests, src_off,
@@ -656,25 +668,25 @@ static int dmatest_func(void *data)
 			continue;
 		}
 
-		pr_debug("%s: verifying source buffer...\n", current->comm);
-		error_count = dmatest_verify(thread->srcs, 0, src_off,
-				0, PATTERN_SRC, true);
-		error_count += dmatest_verify(thread->srcs, src_off,
-				src_off + len, src_off,
-				PATTERN_SRC | PATTERN_COPY, true);
-		error_count += dmatest_verify(thread->srcs, src_off + len,
-				params->buf_size, src_off + len,
-				PATTERN_SRC, true);
+		/* pr_debug("%s: verifying source buffer...\n", current->comm); */
+		/* error_count = dmatest_verify(thread->srcs, 0, src_off, */
+		/* 		0, PATTERN_SRC, true); */
+		/* error_count += dmatest_verify(thread->srcs, src_off, */
+		/* 		src_off + len, src_off, */
+		/* 		PATTERN_SRC | PATTERN_COPY, true); */
+		/* error_count += dmatest_verify(thread->srcs, src_off + len, */
+		/* 		params->buf_size, src_off + len, */
+		/* 		PATTERN_SRC, true); */
 
-		pr_debug("%s: verifying dest buffer...\n", current->comm);
-		error_count += dmatest_verify(thread->dsts, 0, dst_off,
-				0, PATTERN_DST, false);
-		error_count += dmatest_verify(thread->dsts, dst_off,
-				dst_off + len, src_off,
-				PATTERN_SRC | PATTERN_COPY, false);
-		error_count += dmatest_verify(thread->dsts, dst_off + len,
-				params->buf_size, dst_off + len,
-				PATTERN_DST, false);
+		/* pr_debug("%s: verifying dest buffer...\n", current->comm); */
+		/* error_count += dmatest_verify(thread->dsts, 0, dst_off, */
+		/* 		0, PATTERN_DST, false); */
+		/* error_count += dmatest_verify(thread->dsts, dst_off, */
+		/* 		dst_off + len, src_off, */
+		/* 		PATTERN_SRC | PATTERN_COPY, false); */
+		/* error_count += dmatest_verify(thread->dsts, dst_off + len, */
+		/* 		params->buf_size, dst_off + len, */
+		/* 		PATTERN_DST, false); */
 
 		if (error_count) {
 			result("data error", total_tests, src_off, dst_off,

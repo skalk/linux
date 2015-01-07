@@ -1760,13 +1760,13 @@ static inline void _reset_thread(struct pl330_thread *thrd)
 
 	thrd->req[0].mc_cpu = pl330->mcode_cpu
 				+ (thrd->id * pl330->mcbufsz);
-	thrd->req[0].mc_bus = pl330->mcode_bus
+	thrd->req[0].mc_bus = pl330->mcode_bus /*- 0x38000000*/
 				+ (thrd->id * pl330->mcbufsz);
 	thrd->req[0].desc = NULL;
 
 	thrd->req[1].mc_cpu = thrd->req[0].mc_cpu
 				+ pl330->mcbufsz / 2;
-	thrd->req[1].mc_bus = thrd->req[0].mc_bus
+	thrd->req[1].mc_bus = thrd->req[0].mc_bus /*- 0x38000000*/
 				+ pl330->mcbufsz / 2;
 	thrd->req[1].desc = NULL;
 
