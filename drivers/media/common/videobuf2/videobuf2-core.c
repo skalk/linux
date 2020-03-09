@@ -16,6 +16,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/dma-resv.h>
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -1254,11 +1255,45 @@ err:
 }
 
 /*
+ * __wait_dmabuf_fences() - wait for fences to be signalled
+ */
+static void __wait_dmabuf_fences(struct vb2_buffer *vb)
+{
+	struct vb2_queue *q = vb->vb2_queue;
+	unsigned int plane;
+	long ret;
+
+	for (plane = 0; plane < vb->num_planes; ++plane) {
+		struct dma_buf *dbuf = vb->planes[plane].dbuf;
+		/*
+		 * For the output queue, just wait on the exclusive fence,
+		 * we can read in parallel with other readers.
+		 * For the capture queue, wait on all fences before writing.
+		 */
+		bool wait_all = !V4L2_TYPE_IS_OUTPUT(q->type);
+		unsigned long timeout = msecs_to_jiffies(500);
+
+		if (!dbuf)
+			continue;
+
+		ret = dma_resv_wait_timeout_rcu(dbuf->resv, wait_all, true,
+						timeout);
+		if (ret <= 0) {
+			dprintk(1, "timed out waiting for fences: %ld\n", ret);
+			break;
+		}
+	}
+}
+
+/*
  * __enqueue_in_driver() - enqueue a vb2_buffer in driver for processing
  */
 static void __enqueue_in_driver(struct vb2_buffer *vb)
 {
 	struct vb2_queue *q = vb->vb2_queue;
+
+	if (q->memory == VB2_MEMORY_DMABUF)
+		__wait_dmabuf_fences(vb);
 
 	vb->state = VB2_BUF_STATE_ACTIVE;
 	atomic_inc(&q->owned_by_drv_count);
