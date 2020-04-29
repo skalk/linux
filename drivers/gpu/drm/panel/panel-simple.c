@@ -1906,6 +1906,29 @@ static const struct panel_desc innolux_n116bge = {
 	},
 };
 
+static const struct drm_display_mode innolux_n125hce_gn1_mode = {
+	.clock = 162000,
+	.hdisplay = 1920,
+	.hsync_start = 1920 + 40,
+	.hsync_end = 1920 + 40 + 40,
+	.htotal = 1920 + 40 + 40 + 80,
+	.vdisplay = 1080,
+	.vsync_start = 1080 + 4,
+	.vsync_end = 1080 + 4 + 4,
+	.vtotal = 1080 + 4 + 4 + 24,
+	.vrefresh = 70,
+};
+
+static const struct panel_desc innolux_n125hce_gn1 = {
+	.modes = &innolux_n125hce_gn1_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.size = {
+		.width = 276,
+		.height = 155,
+	},
+};
+
 static const struct drm_display_mode innolux_n156bge_l21_mode = {
 	.clock = 69300,
 	.hdisplay = 1366,
@@ -3577,6 +3600,9 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "innolux,n116bge",
 		.data = &innolux_n116bge,
+	}, {
+		.compatible = "innolux,n125hce-gn1",
+		.data = &innolux_n125hce_gn1,
 	}, {
 		.compatible = "innolux,n156bge-l21",
 		.data = &innolux_n156bge_l21,
