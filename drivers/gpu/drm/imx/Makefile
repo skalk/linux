@@ -10,3 +10,7 @@ obj-$(CONFIG_DRM_IMX_LDB) += imx-ldb.o
 
 obj-$(CONFIG_DRM_IMX_HDMI) += dw_hdmi-imx.o
 obj-$(CONFIG_DRM_IMX_DCSS) += dcss/
+
+cdns_mhdp_imx-objs := cdn-mhdp-imxdrv.o cdn-mhdp-dp-phy.o cdn-mhdp-hdmi-phy.o
+obj-$(CONFIG_DRM_IMX_CDNS_MHDP) += cdns_mhdp_imx.o
+
