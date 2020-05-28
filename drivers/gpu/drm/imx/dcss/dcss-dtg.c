@@ -83,6 +83,7 @@ struct dcss_dtg {
 	u32 ctx_id;
 
 	bool in_use;
+	bool hdmi_output;
 
 	u32 dis_ulc_x;
 	u32 dis_ulc_y;
@@ -92,6 +93,9 @@ struct dcss_dtg {
 
 	int ctxld_kick_irq;
 	bool ctxld_kick_irq_en;
+
+	struct clk *pll_src_clk;
+	struct clk *pll_phy_ref_clk;
 };
 
 static void dcss_dtg_write(struct dcss_dtg *dtg, u32 val, u32 ofs)
@@ -129,9 +133,6 @@ static int dcss_dtg_irq_config(struct dcss_dtg *dtg,
 	if (dtg->ctxld_kick_irq < 0)
 		return dtg->ctxld_kick_irq;
 
-	dcss_update(0, LINE0_IRQ | LINE1_IRQ,
-		    dtg->base_reg + DCSS_DTG_INT_MASK);
-
 	ret = request_irq(dtg->ctxld_kick_irq, dcss_dtg_irq_handler,
 			  0, "dcss_ctxld_kick", dtg);
 	if (ret) {
@@ -142,6 +143,9 @@ static int dcss_dtg_irq_config(struct dcss_dtg *dtg,
 	disable_irq(dtg->ctxld_kick_irq);
 
 	dtg->ctxld_kick_irq_en = false;
+
+	dcss_update(0, LINE0_IRQ | LINE1_IRQ,
+		    dtg->base_reg + DCSS_DTG_INT_MASK);
 
 	return 0;
 }
@@ -158,6 +162,7 @@ int dcss_dtg_init(struct dcss_dev *dcss, unsigned long dtg_base)
 	dcss->dtg = dtg;
 	dtg->dev = dcss->dev;
 	dtg->ctxld = dcss->ctxld;
+	dtg->hdmi_output = dcss->hdmi_output;
 
 	dtg->base_reg = ioremap(dtg_base, SZ_4K);
 	if (!dtg->base_reg) {
@@ -168,6 +173,9 @@ int dcss_dtg_init(struct dcss_dev *dcss, unsigned long dtg_base)
 
 	dtg->base_ofs = dtg_base;
 	dtg->ctx_id = CTX_DB;
+
+	dtg->pll_src_clk = dcss->pll_src_clk;
+	dtg->pll_phy_ref_clk = dcss->pll_phy_ref_clk;
 
 	dtg->alpha = 255;
 
@@ -219,16 +227,37 @@ void dcss_dtg_sync_set(struct dcss_dtg *dtg, struct videomode *vm)
 	dis_lrc_y = vm->vsync_len + vm->vfront_porch + vm->vback_porch +
 		    vm->vactive - 1;
 
-	clk_disable_unprepare(dcss->pix_clk);
-	clk_set_rate(dcss->pix_clk, vm->pixelclock);
-	clk_prepare_enable(dcss->pix_clk);
+	printk(KERN_ALERT "DEBUG: %s %d mode: %d x %d clk: %ul\n",__FUNCTION__,__LINE__,vm->hactive,vm->vactive,pixclock);
 
-	actual_clk = clk_get_rate(dcss->pix_clk);
-	if (pixclock != actual_clk) {
-		dev_info(dtg->dev,
-			 "Pixel clock set to %u kHz instead of %u kHz.\n",
-			 (actual_clk / 1000), (pixclock / 1000));
+	if (dtg->hdmi_output) {
+		int err;
+
+		clk_disable_unprepare(dtg->pll_src_clk);
+		err = clk_set_parent(dtg->pll_src_clk, dtg->pll_phy_ref_clk);
+		if (err < 0)
+			dev_warn(dtg->dev, "clk_set_parent() returned %d", err);
+		clk_prepare_enable(dtg->pll_src_clk);
 	}
+
+	if (dtg->hdmi_output) {
+		// hdmi clock (video2_pll)
+		clk_disable_unprepare(dcss->pix_clk);
+		clk_set_rate(dcss->pix_clk, vm->pixelclock);
+		clk_prepare_enable(dcss->pix_clk);
+		actual_clk = clk_get_rate(dcss->pix_clk);
+	} else {
+		// dsi clock (dc_pixel)
+		clk_disable_unprepare(dcss->pix_clk2);
+		clk_set_rate(dcss->pix_clk2, (vm->pixelclock * 700)/1000);
+		clk_prepare_enable(dcss->pix_clk2);
+		actual_clk = clk_get_rate(dcss->pix_clk2);
+	}
+
+	dev_info(dtg->dev,
+		"Pixel clock set to %u kHz instead of %u kHz.\n",
+		(actual_clk / 1000), (pixclock / 1000));
+
+	printk(KERN_ALERT "DEBUG: %s %d \n",__FUNCTION__,__LINE__);
 
 	dcss_dtg_write(dtg, ((dtg_lrc_y << TC_Y_POS) | dtg_lrc_x),
 		       DCSS_DTG_TC_DTG);
@@ -410,4 +439,3 @@ bool dcss_dtg_vblank_irq_valid(struct dcss_dtg *dtg)
 {
 	return !!(dcss_readl(dtg->base_reg + DCSS_DTG_INT_STATUS) & LINE1_IRQ);
 }
-

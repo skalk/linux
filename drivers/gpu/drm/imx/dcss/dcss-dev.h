@@ -79,6 +79,7 @@ struct dcss_dev {
 	struct clk *apb_clk;
 	struct clk *axi_clk;
 	struct clk *pix_clk;
+	struct clk *pix_clk2;
 	struct clk *rtrm_clk;
 	struct clk *dtrc_clk;
 	struct clk *pll_src_clk;

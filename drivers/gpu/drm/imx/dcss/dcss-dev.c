@@ -14,20 +14,32 @@
 
 static void dcss_clocks_enable(struct dcss_dev *dcss)
 {
+	if (dcss->hdmi_output) {
+		clk_prepare_enable(dcss->pll_phy_ref_clk);
+		clk_prepare_enable(dcss->pll_src_clk);
+	}
+
 	clk_prepare_enable(dcss->axi_clk);
 	clk_prepare_enable(dcss->apb_clk);
 	clk_prepare_enable(dcss->rtrm_clk);
 	clk_prepare_enable(dcss->dtrc_clk);
 	clk_prepare_enable(dcss->pix_clk);
+	clk_prepare_enable(dcss->pix_clk2);
 }
 
 static void dcss_clocks_disable(struct dcss_dev *dcss)
 {
+	clk_disable_unprepare(dcss->pix_clk2);
 	clk_disable_unprepare(dcss->pix_clk);
 	clk_disable_unprepare(dcss->dtrc_clk);
 	clk_disable_unprepare(dcss->rtrm_clk);
 	clk_disable_unprepare(dcss->apb_clk);
 	clk_disable_unprepare(dcss->axi_clk);
+
+	if (dcss->hdmi_output) {
+		clk_disable_unprepare(dcss->pll_src_clk);
+		clk_disable_unprepare(dcss->pll_phy_ref_clk);
+	}
 }
 
 static int dcss_submodules_init(struct dcss_dev *dcss)
@@ -108,8 +120,11 @@ static int dcss_clks_init(struct dcss_dev *dcss)
 		{"apb",   &dcss->apb_clk},
 		{"axi",   &dcss->axi_clk},
 		{"pix",   &dcss->pix_clk},
+		{"pix2",   &dcss->pix_clk2},
 		{"rtrm",  &dcss->rtrm_clk},
 		{"dtrc",  &dcss->dtrc_clk},
+		{"pll_src",  &dcss->pll_src_clk},
+		{"pll_phy_ref",  &dcss->pll_phy_ref_clk},
 	};
 
 	for (i = 0; i < ARRAY_SIZE(clks); i++) {
@@ -129,8 +144,11 @@ static void dcss_clks_release(struct dcss_dev *dcss)
 	devm_clk_put(dcss->dev, dcss->dtrc_clk);
 	devm_clk_put(dcss->dev, dcss->rtrm_clk);
 	devm_clk_put(dcss->dev, dcss->pix_clk);
+	devm_clk_put(dcss->dev, dcss->pix_clk2);
 	devm_clk_put(dcss->dev, dcss->axi_clk);
 	devm_clk_put(dcss->dev, dcss->apb_clk);
+	devm_clk_put(dcss->dev, dcss->pll_src_clk);
+	devm_clk_put(dcss->dev, dcss->pll_phy_ref_clk);
 }
 
 struct dcss_dev *dcss_dev_create(struct device *dev, bool hdmi_output)
@@ -140,6 +158,9 @@ struct dcss_dev *dcss_dev_create(struct device *dev, bool hdmi_output)
 	struct resource *res;
 	struct dcss_dev *dcss;
 	const struct dcss_type_data *devtype;
+	int port_id = 0;
+
+	printk(KERN_ALERT "DEBUG: %s %d hdmi_output: %d \n",__FUNCTION__,__LINE__,hdmi_output);
 
 	devtype = of_device_get_match_data(dev);
 	if (!devtype) {
@@ -167,9 +188,12 @@ struct dcss_dev *dcss_dev_create(struct device *dev, bool hdmi_output)
 		goto err;
 	}
 
-	dcss->of_port = of_graph_get_port_by_id(dev->of_node, 0);
+	if (hdmi_output) {
+		port_id = 1;
+	}
+	dcss->of_port = of_graph_get_port_by_id(dev->of_node, port_id);
 	if (!dcss->of_port) {
-		dev_err(dev, "no port@0 node in %s\n", dev->of_node->full_name);
+		dev_err(dev, "no port@%d node in %s\n", port_id, dev->of_node->full_name);
 		ret = -ENODEV;
 		goto clks_err;
 	}
@@ -181,7 +205,7 @@ struct dcss_dev *dcss_dev_create(struct device *dev, bool hdmi_output)
 		dev_err(dev, "submodules initialization failed\n");
 		goto clks_err;
 	}
-
+	
 	pm_runtime_enable(dev);
 
 	return dcss;

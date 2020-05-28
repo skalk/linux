@@ -88,7 +88,9 @@ static void dcss_crtc_atomic_enable(struct drm_crtc *crtc,
 
 	pm_runtime_get_sync(dcss->dev);
 
-	vm.pixelclock = mode->crtc_clock * 700;
+	// FIXME MNT Reform: we moved this fix to dcss-dtg.c for testing
+	//vm.pixelclock = mode->crtc_clock * 700;
+	vm.pixelclock = mode->crtc_clock * 1000;
 
 	dcss_dtg_sync_set(dcss->dtg, &vm);
 

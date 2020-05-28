@@ -44,6 +44,7 @@ static int dcss_drv_init(struct device *dev, bool componentized)
 
 	mdrv->is_componentized = componentized;
 
+	// componentized means HDMI
 	mdrv->dcss = dcss_dev_create(dev, componentized);
 	if (IS_ERR(mdrv->dcss)) {
 		err = PTR_ERR(mdrv->dcss);
@@ -105,28 +106,37 @@ static int compare_of(struct device *dev, void *data)
 	return dev->of_node == data;
 }
 
+static int dcss_use_hdmi = 0;
+module_param(dcss_use_hdmi, int, 0644);
+MODULE_PARM_DESC(dcss_use_hdmi, "Use HDMI output instead of MIPI-DSI");
+
 static int dcss_drv_platform_probe(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
+ 	struct device *dev = &pdev->dev;
 	struct component_match *match = NULL;
 	struct device_node *remote;
 
 	if (!dev->of_node)
 		return -ENODEV;
 
-	remote = of_graph_get_remote_node(dev->of_node, 0, 0);
-	if (!remote)
-		return -ENODEV;
-
-	if (of_device_is_compatible(remote, "fsl,imx8mq-nwl-dsi")) {
-		of_node_put(remote);
-		return dcss_drv_init(dev, false);
+	if (dcss_use_hdmi) {
+		// HDMI: port@1 with reg=<1>
+		remote = of_graph_get_remote_node(dev->of_node, 1, 0);
+		// TODO check compatibility?
+		if (remote) {
+			drm_of_component_match_add(dev, &match, compare_of, remote);
+			of_node_put(remote);
+			return component_master_add_with_match(dev, &dcss_master_ops, match);
+		}
+	} else {
+		// DSI: port@0 with reg=<0>
+		remote = of_graph_get_remote_node(dev->of_node, 0, 0);
+		if (remote && of_device_is_compatible(remote, "fsl,imx8mq-nwl-dsi")) {
+			of_node_put(remote);
+			return dcss_drv_init(dev, false);
+		}
 	}
-
-	drm_of_component_match_add(dev, &match, compare_of, remote);
-	of_node_put(remote);
-
-	return component_master_add_with_match(dev, &dcss_master_ops, match);
+	return -ENODEV;
 }
 
 static int dcss_drv_platform_remove(struct platform_device *pdev)
