@@ -602,6 +602,11 @@ static int imx8mq_clocks_probe(struct platform_device *pdev)
 	clk_hw_set_parent(hws[IMX8MQ_CLK_A53_SRC], hws[IMX8MQ_SYS1_PLL_800M]);
 	clk_hw_set_parent(hws[IMX8MQ_CLK_A53_CORE], hws[IMX8MQ_ARM_PLL_OUT]);
 
+	clk_hw_set_parent(hws[IMX8MQ_CLK_PCIE1_CTRL], hws[IMX8MQ_SYS2_PLL_250M]);
+	clk_hw_set_parent(hws[IMX8MQ_CLK_PCIE1_PHY], hws[IMX8MQ_SYS2_PLL_100M]);
+	clk_hw_set_parent(hws[IMX8MQ_CLK_PCIE2_CTRL], hws[IMX8MQ_SYS2_PLL_250M]);
+	clk_hw_set_parent(hws[IMX8MQ_CLK_PCIE2_PHY], hws[IMX8MQ_SYS2_PLL_100M]);
+
 	imx_check_clk_hws(hws, IMX8MQ_CLK_END);
 
 	err = of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
