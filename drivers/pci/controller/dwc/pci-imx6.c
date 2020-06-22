@@ -40,6 +40,9 @@
 #define IMX8MQ_GPR12_PCIE2_CTRL_DEVICE_TYPE	GENMASK(11, 8)
 #define IMX8MQ_PCIE2_BASE_ADDR			0x33c00000
 
+#define IMX8MQ_PCIE_LINK_CAP_L1EL_64US		(0x6 << 15)
+#define IMX8MQ_PCIE_CTRL_APPS_CLK_REQ		BIT(4)
+
 #define to_imx6_pcie(x)	dev_get_drvdata((x)->dev)
 
 enum imx6_pcie_variants {
@@ -70,6 +73,7 @@ struct imx6_pcie {
 	struct clk		*pcie;
 	struct clk		*pcie_aux;
 	struct regmap		*iomuxc_gpr;
+	struct regmap		*src;
 	u32			controller_id;
 	struct reset_control	*pciephy_reset;
 	struct reset_control	*apps_reset;
@@ -115,6 +119,9 @@ struct imx6_pcie {
 
 #define PCIE_PHY_STAT (PL_OFFSET + 0x110)
 #define PCIE_PHY_STAT_ACK		BIT(16)
+
+#define PCIE_ACK_F_ASPM_CTRL_OFF		(PL_OFFSET + 0xc)
+#define PCEI_ACK_F_ASPM_CTRL_OFF_ENTER_ASPM	BIT(30)
 
 #define PCIE_LINK_WIDTH_SPEED_CONTROL	0x80C
 
@@ -421,11 +428,17 @@ static unsigned int imx6_pcie_grp_offset(const struct imx6_pcie *imx6_pcie)
 	return imx6_pcie->controller_id == 1 ? IOMUXC_GPR16 : IOMUXC_GPR14;
 }
 
+static unsigned int
+imx6_pcie_pciphy_rcr_offset(const struct imx6_pcie *imx6_pcie)
+{
+	WARN_ON(imx6_pcie->drvdata->variant != IMX8MQ);
+	return imx6_pcie->controller_id == 1 ? 0x48 : 0x2C;
+}
+
 static int imx6_pcie_enable_ref_clk(struct imx6_pcie *imx6_pcie)
 {
 	struct dw_pcie *pci = imx6_pcie->pci;
 	struct device *dev = pci->dev;
-	unsigned int offset;
 	int ret = 0;
 
 	switch (imx6_pcie->drvdata->variant) {
@@ -460,20 +473,22 @@ static int imx6_pcie_enable_ref_clk(struct imx6_pcie *imx6_pcie)
 		ret = clk_prepare_enable(imx6_pcie->pcie_aux);
 		if (ret) {
 			dev_err(dev, "unable to enable pcie_aux clock\n");
-			break;
+			//break;
 		}
 
-		offset = imx6_pcie_grp_offset(imx6_pcie);
-		/*
-		 * Set the over ride low and enabled
-		 * make sure that REF_CLK is turned on.
-		 */
-		regmap_update_bits(imx6_pcie->iomuxc_gpr, offset,
-				   IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE,
-				   0);
-		regmap_update_bits(imx6_pcie->iomuxc_gpr, offset,
-				   IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE_EN,
-				   IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE_EN);
+		if (!IS_ENABLED(CONFIG_PCIEASPM)) {
+			unsigned int offset = imx6_pcie_grp_offset(imx6_pcie);
+			/*
+			 * Set the over ride low and enabled
+			 * make sure that REF_CLK is turned on.
+			 */
+			regmap_update_bits(imx6_pcie->iomuxc_gpr, offset,
+					   IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE,
+					   0);
+			regmap_update_bits(imx6_pcie->iomuxc_gpr, offset,
+					 IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE_EN,
+					 IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE_EN);
+		}
 		break;
 	}
 
@@ -542,11 +557,46 @@ static void imx6_pcie_deassert_core_reset(struct imx6_pcie *imx6_pcie)
 		msleep(100);
 		gpio_set_value_cansleep(imx6_pcie->reset_gpio,
 					!imx6_pcie->gpio_active_high);
+		msleep(100);
 	}
 
 	switch (imx6_pcie->drvdata->variant) {
 	case IMX8MQ:
 		reset_control_deassert(imx6_pcie->pciephy_reset);
+		if (IS_ENABLED(CONFIG_PCIEASPM)) {
+			u32 lcr, aspm_ctrl;
+			/*
+			 * TODO: Is this really needed? If so, can we
+			 * just set APPS_CLK_REQ in imx7_reset_probe()
+			 * and forget about it?
+			 */
+			regmap_update_bits(imx6_pcie->src,
+				        imx6_pcie_pciphy_rcr_offset(imx6_pcie),
+					IMX8MQ_PCIE_CTRL_APPS_CLK_REQ,
+					IMX8MQ_PCIE_CTRL_APPS_CLK_REQ);
+			/*
+			 * Configure the L1 latency of rc to less than
+			 * 64us Otherwise, the L1/L1SUB wouldn't be
+			 * enable by ASPM.
+			 */
+			dw_pcie_dbi_ro_wr_en(pci);
+
+			lcr  = dw_pcie_readl_dbi2(pci, PCIE_RC_LCR);
+			lcr &= ~PCI_EXP_LNKCAP_L1EL;
+			lcr |= IMX8MQ_PCIE_LINK_CAP_L1EL_64US;
+			dw_pcie_writel_dbi2(pci, PCIE_RC_LCR, lcr);
+			/*
+			 * Set ENTER_ASPM to be more aggressive about
+			 * entering ASPM
+			 */
+			aspm_ctrl = dw_pcie_readl_dbi(pci,
+						     PCIE_ACK_F_ASPM_CTRL_OFF);
+			aspm_ctrl |= PCEI_ACK_F_ASPM_CTRL_OFF_ENTER_ASPM;
+			dw_pcie_writel_dbi(pci, PCIE_ACK_F_ASPM_CTRL_OFF,
+					   aspm_ctrl);
+
+			dw_pcie_dbi_ro_wr_dis(pci);
+		}
 		break;
 	case IMX7D:
 		reset_control_deassert(imx6_pcie->pciephy_reset);
@@ -621,18 +671,57 @@ static void imx6_pcie_configure_type(struct imx6_pcie *imx6_pcie)
 	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR12, mask, val);
 }
 
+#define IMX8MQ_ANA_PLLOUT_REG			0x74
+#define IMX8MQ_ANA_PLLOUT_CKE			BIT(4)
+#define IMX8MQ_ANA_PLLOUT_SEL_MASK		0xF
+#define IMX8MQ_ANA_PLLOUT_SEL_SYSPLL1		0xB
+#define IMX8MQ_ANA_PLLOUT_DIV_REG		0x7C
+#define IMX8MQ_ANA_PLLOUT_SYSPLL1_DIV		0x7
+
+static void imx6_pcie_enable_internal_refclk(void)
+{
+	uint32_t val;
+	struct device_node* np;
+	void __iomem *base;
+
+	np = of_find_compatible_node(NULL, NULL,
+				"fsl,imx8mq-anatop");
+	base = of_iomap(np, 0);
+	WARN_ON(!base);
+
+	val = readl(base + IMX8MQ_ANA_PLLOUT_REG);
+	val &= ~IMX8MQ_ANA_PLLOUT_SEL_MASK;
+	val |= IMX8MQ_ANA_PLLOUT_SEL_SYSPLL1;
+	writel(val, base + IMX8MQ_ANA_PLLOUT_REG);
+	/* SYS_PLL1 is 800M, PCIE REF CLK is 100M */
+	val = readl(base + IMX8MQ_ANA_PLLOUT_DIV_REG);
+	val |= IMX8MQ_ANA_PLLOUT_SYSPLL1_DIV;
+	writel(val, base + IMX8MQ_ANA_PLLOUT_DIV_REG);
+
+	val = readl(base + IMX8MQ_ANA_PLLOUT_REG);
+	val |= IMX8MQ_ANA_PLLOUT_CKE;
+	writel(val, base + IMX8MQ_ANA_PLLOUT_REG);
+
+	usleep_range(9000,10000);
+}
+
 static void imx6_pcie_init_phy(struct imx6_pcie *imx6_pcie)
 {
+	int ext_osc = 1;
+	if (imx6_pcie->controller_id == 0) {
+		ext_osc = 0;
+	}
+
+	if (!ext_osc) {
+		imx6_pcie_enable_internal_refclk();
+	}
+
 	switch (imx6_pcie->drvdata->variant) {
 	case IMX8MQ:
-		/*
-		 * TODO: Currently this code assumes external
-		 * oscillator is being used
-		 */
 		regmap_update_bits(imx6_pcie->iomuxc_gpr,
 				   imx6_pcie_grp_offset(imx6_pcie),
 				   IMX8MQ_GPR_PCIE_REF_USE_PAD,
-				   IMX8MQ_GPR_PCIE_REF_USE_PAD);
+                       (ext_osc ? IMX8MQ_GPR_PCIE_REF_USE_PAD : 0));
 		break;
 	case IMX7D:
 		regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR12,
@@ -1054,8 +1143,14 @@ static int imx6_pcie_probe(struct platform_device *pdev)
 	pci->dbi_base = devm_ioremap_resource(dev, dbi_base);
 	if (IS_ERR(pci->dbi_base))
 		return PTR_ERR(pci->dbi_base);
+	/*
+	 * Configure dbi_base2 to access DBI space with CS2
+	 * asserted
+	 */
+	pci->dbi_base2 = pci->dbi_base + SZ_1M;
 
 	/* Fetch GPIOs */
+	// fixme don't reset
 	imx6_pcie->reset_gpio = of_get_named_gpio(node, "reset-gpio", 0);
 	imx6_pcie->gpio_active_high = of_property_read_bool(node,
 						"reset-gpio-active-high");
@@ -1107,6 +1202,13 @@ static int imx6_pcie_probe(struct platform_device *pdev)
 			dev_err(dev, "pcie_aux clock source missing or invalid\n");
 			return PTR_ERR(imx6_pcie->pcie_aux);
 		}
+		imx6_pcie->src =
+			syscon_regmap_lookup_by_compatible("fsl,imx8mq-src");
+		if (IS_ERR(imx6_pcie->src)) {
+			dev_err(dev, "SRC regmap is missing or invalid\n");
+			return PTR_ERR(imx6_pcie->src);
+		}
+
 		/* fall through */
 	case IMX7D:
 		if (dbi_base->start == IMX8MQ_PCIE2_BASE_ADDR)
