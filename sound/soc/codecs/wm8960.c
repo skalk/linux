@@ -126,6 +126,7 @@ struct wm8960_priv {
 	struct snd_soc_dapm_widget *rout1;
 	struct snd_soc_dapm_widget *out3;
 	bool deemph;
+	bool dacslope;
 	int lrclk;
 	int bclk;
 	int sysclk;
@@ -217,6 +218,33 @@ static int wm8960_put_deemph(struct snd_kcontrol *kcontrol,
 	return wm8960_set_deemph(component);
 }
 
+static int wm8960_put_dacslope(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct wm8960_priv *wm8960 = snd_soc_component_get_drvdata(component);
+	unsigned int val = ucontrol->value.integer.value[0];
+
+	if (val > 1)
+		return -EINVAL;
+
+	wm8960->dacslope = val;
+
+	return snd_soc_component_update_bits(component, WM8960_DACCTL1,
+				   0x2, val<<1);
+}
+
+static int wm8960_get_dacslope(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct wm8960_priv *wm8960 = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.integer.value[0] = wm8960->dacslope;
+	return 0;
+}
+
+
 static const DECLARE_TLV_DB_SCALE(adc_tlv, -9750, 50, 1);
 static const DECLARE_TLV_DB_SCALE(inpga_tlv, -1725, 75, 0);
 static const DECLARE_TLV_DB_SCALE(dac_tlv, -12750, 50, 1);
@@ -271,6 +299,9 @@ SOC_SINGLE("ADC High Pass Filter Switch", WM8960_DACCTL1, 0, 1, 0),
 SOC_ENUM("DAC Polarity", wm8960_enum[1]),
 SOC_SINGLE_BOOL_EXT("DAC Deemphasis Switch", 0,
 		    wm8960_get_deemph, wm8960_put_deemph),
+
+SOC_SINGLE_BOOL_EXT("DAC Slope", 0,
+		    wm8960_get_dacslope, wm8960_put_dacslope),
 
 SOC_ENUM("3D Filter Upper Cut-Off", wm8960_enum[2]),
 SOC_ENUM("3D Filter Lower Cut-Off", wm8960_enum[3]),
